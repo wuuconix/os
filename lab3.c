@@ -250,6 +250,7 @@ int main()
                     getNodeN(headFF, nodeIndex(headFF, target))->length = target->length; //同步FF链表
                     head = genLinkBF(head); //重新排序
                 }
+                displayLinks(head); //每次
             }
             else
             {
