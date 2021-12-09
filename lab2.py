@@ -4,40 +4,38 @@ class Process:
        self.name = Name
        self.priority = int(Priority)
        self.status = "ready" #默认为ready状态
-       self.resource = None #表示该进程正在使用的资源标号，默认不需要资源,
+       self.resource = [] #表示该进程正在使用的资源标号，默认不需要资源
+       self.wantRe = [] #表示进程需要但还未被满足的资源，默认为空
 
 class Resource:
    def __init__(self, Id):
        self.id = int(Id)
        self.status = "free" #默认资源的状态为free
-       self.blockQue = None #表示当前资源阻塞了那些进程，记录进程的id
+       self.usingPid = -1 #表示正在使用该资源的进程的pid
+       self.blockQue = [] #表示当前资源阻塞了那些进程，记录进程的id
 
-def findProcess(processes:list, pid:int)->Process: #根据pid从列表中找到进程对象并返回
+def getProcessById(pid:int)->Process: #根据pid从列表中找到进程对象并返回
+    global processes
     for i in processes:
         if i.id == pid:
             return i
     return None
 
-def chooseRun(readyQue:list)->Process: #选择当前就绪队列中优先级最高的且最先到的进程来运行
-    index, que = 3, readyQue[3]
-    while len(que) == 0:
-        index -= 1
-        que = readyQue[index]
-    return que.pop(0)
-
 def InitProcess()->list: #实验报告要求的初始化进程函数，它会返回一个包含init进程的一个进程列表
     processes = []
     initProcess = Process(0, "Init", 0) #按照实验指导要求生成一个0优先级的init进程
+    initProcess.status = "running"
     processes.append(initProcess)
     return processes
 
-def InitResources()->list: #初始化资源，一共有4个资源，id分别为0~4，默认状态都是free
+def InitResources()->list: #初始化资源，一共有4个资源，id分别为0~3，默认状态都是free
     resources = []
-    for i in range(0, 5):
+    for i in range(0, 4):
         resources.append(Resource(i)) #利用构造函数给资源一个id号
     return resources
     
-def printReadyQue(readyQue): #可视化输出各个优先级的就绪队列
+def printReadyQue(): #可视化输出各个优先级的就绪队列
+    global readyQue
     for i in range(len(readyQue) - 1, -1, -1):
         que = readyQue[i]
         if len(que) == 0:
@@ -47,23 +45,27 @@ def printReadyQue(readyQue): #可视化输出各个优先级的就绪队列
             for process in que:
                 print(" " * 12 + f"pid: {process.id} name: {process.name}")
 
-def printRunProcess(runningProcess): #可视化输出当前运行的进程
+def printRunProcess(): #可视化输出当前运行的进程
+    global processes
+    runningProcess = getRunProcess()
     print("running process:\n" + f"pid: {runningProcess.id} name: {runningProcess.name}")
 
-def printProcesses(processes): #可视化输出所有的进程
+def printProcesses(): #可视化输出所有的进程
+    global processes
     print(f"now existing {len(processes)} process")
     for i in processes:
-        print(f"pid: {i.id}  name: {i.name}  priority: {i.priority}  status: {i.status}  resource: {i.resource}")
+        print(f"pid: {i.id}  name: {i.name}  priority: {i.priority}  status: {i.status}  resource: {i.resource}  wantRe: {i.wantRe}")
 
-def printResouces(resources): #可视化输出所有的资源
+def printResources(): #可视化输出所有的资源
+    global resources
     for i in resources:
-        print(f"rid: {i.id}  status: {i.status}  blockQue: {i.blockQue}")
+        print(f"rid: {i.id}  status: {i.status}  usingPid: {i.usingPid}  blockQue: {i.blockQue}")
 
 def checkCMD(cmd:str)->bool: #检测命令是否合法，合法则True，非法则False
     if cmd == "":
         return False
     cmd = cmd.split()
-    if cmd[0] not in ["ls", "cr", "kill", "req"]: #不在已有命令中
+    if cmd[0] not in ["ls", "cr", "kill", "req", "rel"]: #不在已有命令中
         print(f"Error! No cmd named {cmd[0]}")
     elif cmd[0] == "ls" and cmd[1] not in ["-q", "--run", "-p", "-r"]:
         print(f"Error in ls, No ls cmd named ls {cmd[1]}")
@@ -74,21 +76,122 @@ def checkCMD(cmd:str)->bool: #检测命令是否合法，合法则True，非法�
     elif cmd[0] == "cr" and (int(cmd[2]) > 3 or int(cmd[2]) < 0): #优先级不在0~3之间
         print("Error in cr, please make sure your priority from 0 to 3")
         return False
-    elif cmd[0] == "kill" and not cmd[1].isdigit(): #第一个参数若不是数字
-        print("Error in kill, please use like 'kill 1'")
-        return False
-    elif cmd[0] == "req" and (len(cmd) != 3 or not cmd[1].isdigit() or not cmd[2].isdigit()): #参数个数不对或着pid和rid不是数字
-        print("Error in req, please use like 'req 1 3'")
-        return False
+    elif cmd[0] == "kill":
+        if not cmd[1].isdigit():
+            print("Error in kill, please use like 'kill 1'")
+            return False
+        elif int(cmd[1]) == 0: #不能杀掉 pid为0的init进程
+            print("Error in kill, init process could not be killed!")
+            return False
+        elif not getProcessById(int(cmd[1])): #找不到用户输入对应的pid
+            print(f"Error in kill, cant't find process {int(cmd[1])}")
+            return False
+    elif cmd[0] == "req": #参数个数不对或着pid和rid不是数字
+        if len(cmd) != 3 or not cmd[1].isdigit() or not cmd[2].isdigit():
+            print("Error in req, please use like 'req 1 3'")
+            return False
+        elif not getProcessById(int(cmd[1])): #找不到pid
+            print(f"Error in req, cant't find process {int(cmd[1])}")
+            return False
+        elif not int(cmd[2]) in range(0, 4): #rid 不在0~3之间
+            print(f"Error in req, please input a rid from 0 to 3")
+            return False
+    elif cmd[0] == "rel":
+        if len(cmd) != 3 or not cmd[1].isdigit() or not cmd[2].isdigit():
+            print("Error in req, please use like 'rel 1 3'")
+            return False
+        elif int(cmd[2]) not in getProcessById(int(cmd[1])).resource: #需要释放的资源不在进程占用的资源列表里
+            print(f"Error in req, resource{int(cmd[2])} not in process{int(cmd[1])}.resource")
+            return False
     return True
+
+def getRunProcess()->Process: #返回正在运行的进程
+    global processes
+    for i in processes:
+        if i.status == "running":
+            return i
+
+def getPID()->int: #返回一个pid，供创建的进程初始化
+    global pid
+    pid = pid + 1
+    return pid
+
+def scheduler(): #最终要的调度程序
+    global processes, readyQue
+    runningProcess = getRunProcess()
+    for i in range(3, -1, -1): #从最高优先级的就绪队列开始遍历
+        if runningProcess.priority < i and readyQue[i]: #说明比它高优先级的就绪队列非空
+            runningProcess.status = "ready"
+            readyQue[runningProcess.priority].append(runningProcess)
+            runningProcess = readyQue[i].pop(0) #新的runningProcess
+            runningProcess.status = "running"
+            break
+    print(f"* process {runningProcess.name} is running!")
+    return
+
+def request(pid:int, rid:int): #为pid进程申请rid资源
+    global processes, resources, blockQue, readyQue
+    targetProcess = getProcessById(pid)
+    if resources[rid].status == "free": #若资源空闲
+        resources[rid].usingPid = pid
+        resources[rid].status = "allocated"
+        if rid in targetProcess.wantRe:
+            targetProcess.wantRe.remove(rid) #从愿望清单上删除
+        targetProcess.resource.append(rid)
+        print(f"* process {targetProcess.name} get resouce{rid} successfully")
+    elif resources[rid].status == "allocated": #若资源已被占用
+        resources[rid].blockQue.append(pid)
+        targetProcess.wantRe.append(rid)
+        if targetProcess.status == "running": #若请求资源的进程为正在运行的，则需要加入阻塞队列然后重新调度选出新的运行进程
+            targetProcess.status = "block"
+            blockQue.append(targetProcess)
+            print(f"* process {targetProcess.name} is blocked!   (from running to block)")
+            delFromRQById(0) #将init进程从就绪队列中删除，转而成为运行态
+            processes[0].status = "running"
+            scheduler()
+        elif targetProcess.status == "ready": #若请求资源的进程为就绪态，则从就绪队列中删除，加入到阻塞队列中
+            targetProcess.status = "block"
+            delFromRQById(pid)
+            blockQue.append(targetProcess)
+            print(f"* process {targetProcess.name} is blocked!   (from ready to block)")
+        elif targetProcess.status == "block":
+            print(f"* process {targetProcess.name} is blocked!   (from block to block)")
+
+def release(pid:int, rid:int): #为pid进程释放rid资源
+    global resources, readyQue
+    targetProcess = getProcessById(pid)
+    targetProcess.resource.remove(rid) #删除进程中的占用
+    resources[rid].usingPid = -1 #删除资源中usingPid
+    resources[rid].status = "free"
+    print(f"* process {targetProcess.name} releases resource{rid} successfully")
+    if resources[rid].blockQue: #如果该资源阻塞了其他的进程
+        wakeProcess = getProcessById(resources[rid].blockQue.pop(0))  #由于资源被释放从而唤醒的一个进程
+        request(wakeProcess.id, rid) #自动为阻塞队列中的第一个进程申请资源
+        if not wakeProcess.wantRe: #如果被唤醒的进程所需要的资源都获得了满足，则加入就绪队列
+            wakeProcess.status = "ready"
+            delFromBQById(wakeProcess.id)
+            readyQue[wakeProcess.priority].append(wakeProcess) #当就绪队列发生改变就需要执行调度程序，因为可能会导致runningprocess发生改变。
+            scheduler()
+    else: #如果该资源没有阻塞其他进程
+        return 
+            
+
+
+def delFromRQById(pid:int): #在就绪队列中删除pid的进程
+    global readyQue
+    targetProcess = getProcessById(pid)
+    readyQue[targetProcess.priority].remove(targetProcess)
+
+def delFromBQById(pid:int): #在阻塞队列中删除pid的进程
+    global blockQue
+    blockQue.remove(getProcessById(pid))
 
 processes = InitProcess()
 resources = InitResources()
 blockQue = [] #记录当前哪些进程被阻塞了
 readyQue = [[], [], [], []] #就绪队列组，按照优先级分出不同的优先级队列。下标为0的代表优先级为0的就绪队列。默认有0~3，一共4个优先级队列
 
-runningProcess = processes[0] #一开始running的就是init进程
-pid = 1 #不断递增的pid
+pid = 0 #不断递增的pid
 
 while(1):
     cmd = input(">")
@@ -99,83 +202,38 @@ while(1):
         break
     elif cmd[0] == "ls": #ls命令包含一系列查看操作 例子ls -p查看所有进程
         if cmd[1] == "-q": #查看就绪队列
-            printReadyQue(readyQue)
+            printReadyQue()
         elif cmd[1] == "--run": #查看正在运行的进程
-            printRunProcess(runningProcess)
+            printRunProcess()
         elif cmd[1] == "-p": #查看所有进程
-            printProcesses(processes)
+            printProcesses()
         elif cmd[1] == "-r": #查看所有资源
-            printResouces(resources)
+            printResources()
     elif cmd[0] == "cr": #创建进程  例如 cr A 3 将创建一个优先级为3，名字为A的进程。
-        name, priority = cmd[1], int(cmd[2]) #priority需要为整型
-        newProcess = Process(pid, name, priority)
+        name, priority = cmd[1], int(cmd[2])
+        newProcess = Process(getPID(), name, priority) #新的进程直接加入就绪队列即可，然后调用调度程序
         processes.append(newProcess)
-        pid += 1
-        if newProcess.priority <= runningProcess.priority: #如果没有超过正在运行的进程的优先级，则加入就绪队列
-            readyQue[priority].append(newProcess)
-        else: #否则剥夺当前进程
-            runningProcess.status = "ready"
-            readyQue[runningProcess.priority].append(runningProcess)
-            newProcess.status = "running"
-            runningProcess = newProcess
-        print(f"* process {runningProcess.name} is running!")
+        readyQue[priority].append(newProcess)
+        print(f"* process {newProcess.name} has been created successfully")
+        scheduler() #调用调度程序
     elif cmd[0] == "kill": #杀死进程 例如 kill 1 将杀死pid为1的进程
-        pid = int(cmd[1]) # 利用pid来删除进程
-        if pid == 0:
-            print("init process could not be killed!")
-            continue
-        targetProcess = findProcess(processes, pid)
-        if not targetProcess:
-            print(f"cant't find process {pid}")
-            continue
-        if targetProcess.status == "running": #如果kill的进程是当前执行的，需要从就绪队列中上一个来执行
-            processes.remove(runningProcess)
-            print(f"* process {runningProcess.name} has been killed!")
-            runningProcess = chooseRun(readyQue)
-            print(f"* process {runningProcess.name} is running!")
+        pid = int(cmd[1])
+        targetProcess = getProcessById(pid)
+        for re in targetProcess.resource: #杀死进程时自动释放它占用的资源
+            release(pid, re)
+        processes.remove(targetProcess)
+        print(f"* process {targetProcess.name} has been killed!")
+        if targetProcess.status == "running": #如果kill的进程是running的，从processes中删除
+            delFromRQById(0)
+            processes[0].status = "running" #让init进程来临时当running
+            scheduler()
         elif targetProcess.status == "ready": #要kill的进程在就绪队列中
-            for i in readyQue:
-                if targetProcess in i:
-                    i.remove(targetProcess)
-                    break
-            processes.remove(targetProcess)
-            print(f"* process {targetProcess.name} has been killed!")
+            delFromRQById(pid)
         elif targetProcess.status == "block": #要kill的进程在阻塞队列中
-            blockQue.remove(targetProcess)
-            for i in resources: #资源的阻塞队列中如果有它，也需要进行清楚
-                if pid in i.blockQue:
-                    i.blockQue.remove(pid) 
+            delFromBQById(pid)
     elif cmd[0] == "req": #请求资源 例如 req 1 3 表示1号进程去申请3号资源
         pid, rid = int(cmd[1]), int(cmd[2]) #re pid, rid的格式，表示pid的进程去请求rid的资源
-        if resources[rid].status == "free": #若资源空闲
-            resources[rid].status = "allocated"
-            targetProcess = findProcess(processes, pid)
-            if targetProcess:
-                targetProcess.resource = rid
-                print(f"* process {runningProcess.name} is running!")
-            else:
-                print(f"cant't find process {pid}")
-                continue
-        elif resources[rid].status == "allocated": #若资源已被占用
-            targetProcess = findProcess(processes, pid)
-            if not targetProcess:
-                print(f"cant't find process {pid}")
-                continue
-            else:
-                status = targetProcess.status
-                if status == "running":
-                    print(f"* process {targetProcess.name} is blocked!   (from running to block)")
-                    targetProcess.status = "block"
-                    blockQue.append(targetProcess)
-                    nextRunProcess = chooseRun(readyQue)
-                    runningProcess = nextRunProcess
-                    runningProcess.status = "running" #新晋运行进程
-                    print(f"* process {runningProcess.name} is running!")
-                elif status == "ready":
-                    print(f"* process {targetProcess.name} is blocked!   (from ready to block)")
-                    targetProcess.status = "block"
-                    blockQue.append(targetProcess)        
-                    print(f"* process {runningProcess.name} is running!")
-                elif status == "block":
-                    print(f"* process {targetProcess.name} is blocked!   (from block to block)")
-                    print(f"* process {runningProcess.name} is running!")
+        request(pid, rid)
+    elif cmd[0] == "rel": #释放资源 例如 rel 1 3 表示1号进程将释放其占用的3号资源
+        pid, rid = int(cmd[1]), int(cmd[2])
+        release(pid, rid)
