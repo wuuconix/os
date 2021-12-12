@@ -1,0 +1,14 @@
+p
+3
+r
+1
+available
+2
+allocation
+1
+4
+5
+max
+4
+4
+8

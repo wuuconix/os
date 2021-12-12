@@ -65,12 +65,12 @@ def checkCMD(cmd:str)->bool: #检测命令是否合法，合法则True，非法�
     if cmd == "":
         return False
     cmd = cmd.split()
-    if cmd[0] not in ["ls", "cr", "kill", "req", "rel"]: #不在已有命令中
+    if cmd[0] not in ["ls", "cr", "kill", "req", "rel", "quit"]: #不在已有命令中
         print(f"Error! No cmd named {cmd[0]}")
     elif cmd[0] == "ls" and cmd[1] not in ["-q", "--run", "-p", "-r"]:
         print(f"Error in ls, No ls cmd named ls {cmd[1]}")
         return False
-    elif cmd[0] == "cr" and (len(cmd) != 3 or not cmd[2].isdigit()): #参数个数不对或者优先级不是数字
+    elif cmd[0] == "cr" and (len(cmd) != 3 or not cmd[2]): #参数个数不对或者优先级不是数字
         print("Error in cr, please use like 'cr A 2'")
         return False
     elif cmd[0] == "cr" and (int(cmd[2]) > 3 or int(cmd[2]) < 0): #优先级不在0~3之间
@@ -175,8 +175,6 @@ def release(pid:int, rid:int): #为pid进程释放rid资源
     else: #如果该资源没有阻塞其他进程
         return 
             
-
-
 def delFromRQById(pid:int): #在就绪队列中删除pid的进程
     global readyQue
     targetProcess = getProcessById(pid)
@@ -199,6 +197,7 @@ while(1):
         continue
     cmd = cmd.split() #根据空格区分
     if cmd[0] == "quit": #quit退出
+        print("byebye~")
         break
     elif cmd[0] == "ls": #ls命令包含一系列查看操作 例子ls -p查看所有进程
         if cmd[1] == "-q": #查看就绪队列
