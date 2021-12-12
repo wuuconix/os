@@ -37,7 +37,7 @@ with open("inputC.txt", "r") as f: #inputA 代表报告中的A状态, inputC代�
     Max = getTable('max')
     Need = getNeed()
 
-def printTable(name:str):
+def printTable(name:str): #可视化输出相应信息
     global Pnum, Rnum, Available, Allocation, Max, Need
     if name == "ava":
         print("当前资源剩余情况:")
@@ -56,7 +56,7 @@ def printTable(name:str):
         for i in range(0, Pnum):
             print(f"{i}号进程: {Need[i]}")
 
-def checkCMD(cmd:str)->bool:
+def checkCMD(cmd:str)->bool: #检查命令是否合法
     global Pnum, Rnum
     cmd = cmd.split(" ")
     if not cmd[0] in ['req', 'rel', 'p']: #遇到了不认识的命令
